@@ -3,6 +3,17 @@ defmodule Copi.RateLimiterConfigTest do
 
   alias Copi.RateLimiter
 
+  setup do
+    # Generate deterministic unique IP for each test to avoid collisions
+    test_id = :erlang.unique_integer([:positive])
+    ip = "10.#{rem(test_id, 256)}.#{div(test_id, 256) |> rem(256)}.#{div(test_id, 65536) |> rem(256)}"
+    
+    # Clear rate limiter state for this IP to ensure test isolation
+    RateLimiter.clear_ip(ip)
+    
+    {:ok, ip: ip}
+  end
+
   describe "test environment configuration" do
     test "rate limiter has high limits in test environment" do
       config = RateLimiter.get_config()
@@ -13,10 +24,7 @@ defmodule Copi.RateLimiterConfigTest do
       assert config.connection.max_requests == 100_000
     end
 
-    test "allows many player creations without rate limiting" do
-      # Use a unique IP for this test
-      ip = "10.100.100.#{:rand.uniform(255)}"
-      
+    test "allows many player creations without rate limiting", %{ip: ip} do
       # Should be able to create 50 players without being rate limited
       # (default limit is 20, but test config should be 100,000)
       for i <- 1..50 do
@@ -25,10 +33,7 @@ defmodule Copi.RateLimiterConfigTest do
       end
     end
 
-    test "allows many game creations without rate limiting" do
-      # Use a unique IP for this test
-      ip = "10.101.101.#{:rand.uniform(255)}"
-      
+    test "allows many game creations without rate limiting", %{ip: ip} do
       # Should be able to create 30 games without being rate limited
       # (default limit is 10, but test config should be 100,000)
       for i <- 1..30 do
