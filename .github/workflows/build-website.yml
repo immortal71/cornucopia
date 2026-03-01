@@ -43,7 +43,7 @@
             run: |
               pnpm install          # Install dependencies
               npm run build        # Build production version
-              pnpm audit --prod
+              pnpm audit --prod --audit-level critical
               pnpm run coverage
 
           - name: Smoke test
