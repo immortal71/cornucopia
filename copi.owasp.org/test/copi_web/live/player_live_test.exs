@@ -85,5 +85,53 @@ defmodule CopiWeb.PlayerLiveTest do
       # Verify vote created
       assert Copi.Repo.get_by(Copi.Cornucopia.Vote, dealt_card_id: dealt.id, player_id: player.id)
     end
+
+    test "next_round advances game when round is already closed", %{conn: conn, player: player} do
+      game_id = player.game_id
+      {:ok, game} = Cornucopia.Game.find(game_id)
+
+      Copi.Repo.update!(
+        Ecto.Changeset.change(game, started_at: DateTime.truncate(DateTime.utc_now(), :second))
+      )
+
+      {:ok, card} =
+        Cornucopia.create_card(%{
+          category: "C", value: "V", description: "D", edition: "webapp",
+          version: "2.2", external_id: "NR1", language: "en", misc: "misc",
+          owasp_scp: [], owasp_devguide: [], owasp_asvs: [], owasp_appsensor: [],
+          capec: [], safecode: [], owasp_mastg: [], owasp_masvs: []
+        })
+
+      # played_in_round: 1 means player has played this round → round is closed.
+      # No nil-round cards remain → last_round? is true → finished_at gets set.
+      Copi.Repo.insert!(%Copi.Cornucopia.DealtCard{
+        player_id: player.id, card_id: card.id, played_in_round: 1
+      })
+
+      {:ok, show_live, _html} = live(conn, "/games/#{game_id}/players/#{player.id}")
+      render_click(show_live, "next_round", %{})
+
+      {:ok, updated_game} = Cornucopia.Game.find(game_id)
+      assert updated_game.rounds_played == 1
+      assert updated_game.finished_at != nil
+    end
+
+    test "next_round is a no-op when round is open", %{conn: conn, player: player} do
+      game_id = player.game_id
+      {:ok, game} = Cornucopia.Game.find(game_id)
+
+      Copi.Repo.update!(
+        Ecto.Changeset.change(game, started_at: DateTime.truncate(DateTime.utc_now(), :second))
+      )
+
+      # No dealt cards → round_open? = true.
+      # The if branch returns {:noreply, socket} immediately — no game reload, no broadcast.
+      {:ok, show_live, _html} = live(conn, "/games/#{game_id}/players/#{player.id}")
+      html = render_click(show_live, "next_round", %{})
+      assert is_binary(html)
+
+      {:ok, unchanged_game} = Cornucopia.Game.find(game_id)
+      assert unchanged_game.rounds_played == 0
+    end
   end
 end
