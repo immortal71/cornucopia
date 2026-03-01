@@ -70,30 +70,30 @@ defmodule CopiWeb.PlayerLive.Show do
     if round_open?(game) do
       # Check if we can continue due to majority continue votes
       if Copi.Cornucopia.Game.can_continue_round?(game) do
-        # Close the round and proceed
+        # Close the round and schedule :proceed_to_next_round in 100ms.
+        # Do NOT broadcast here — the timer handler will broadcast with the
+        # correct incremented state once it fires.
         Copi.Cornucopia.update_game(game, %{round_open: false})
-
-        # Wait a moment then proceed to next round
         Process.send_after(self(), :proceed_to_next_round, 100)
-
         {:noreply, assign(socket, :game, game)}
       else
-        # Somehow we've had a request to advance to the next round with players still to play, possibly a race condition, ignore
+        # Round is still open but majority vote to continue has not been reached.
+        # Possibly a race condition — ignore and do nothing.
         {:noreply, socket}
       end
     else
+      # Round is already closed: advance rounds_played, reopen the round,
+      # and broadcast the updated state to all connected clients.
       Copi.Cornucopia.update_game(game, %{rounds_played: game.rounds_played + 1, round_open: true})
 
       if last_round?(game) do
-        Copi.Cornucopia.update_game(game, %{finished_at: DateTime.truncate(DateTime.utc_now(), :second)} )
+        Copi.Cornucopia.update_game(game, %{finished_at: DateTime.truncate(DateTime.utc_now(), :second)})
       end
+
+      {:ok, updated_game} = Game.find(game.id)
+      CopiWeb.Endpoint.broadcast(topic(updated_game.id), "game:updated", updated_game)
+      {:noreply, assign(socket, :game, updated_game)}
     end
-
-    {:ok, updated_game} = Game.find(game.id)
-
-    CopiWeb.Endpoint.broadcast(topic(updated_game.id), "game:updated", updated_game)
-
-    {:noreply, assign(socket, :game, updated_game)}
   end
 
   @impl true

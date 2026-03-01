@@ -419,7 +419,7 @@ defmodule CopiWeb.PlayerLiveTest do
       )
 
       # No dealt cards → round_open? = true. No continue votes → can_continue_round? = false.
-      # The else branch ({:noreply, socket}) is evaluated, then game is reloaded and broadcast.
+      # The inner else branch returns {:noreply, socket} immediately — no game reload, no broadcast.
       {:ok, show_live, _html} = live(conn, "/games/#{game_id}/players/#{player.id}")
       html = render_click(show_live, "next_round", %{})
       assert is_binary(html)
@@ -427,6 +427,39 @@ defmodule CopiWeb.PlayerLiveTest do
       # Game rounds_played must remain 0 — no real advancement happened
       {:ok, unchanged_game} = Cornucopia.Game.find(game_id)
       assert unchanged_game.rounds_played == 0
+    end
+
+    test "next_round with open round and majority continue votes closes round then schedules timer",
+         %{conn: conn, player: player} do
+      game_id = player.game_id
+      {:ok, game} = Cornucopia.Game.find(game_id)
+
+      Copi.Repo.update!(
+        Ecto.Changeset.change(game, started_at: DateTime.truncate(DateTime.utc_now(), :second))
+      )
+
+      # 1 player + 1 continue vote → majority_continue_votes_reached? = (1 > div(1,2)) = true
+      # No dealt cards → round_open? = true
+      # Together: can_continue_round? = true
+      Copi.Repo.insert!(%Copi.Cornucopia.ContinueVote{player_id: player.id, game_id: game_id})
+
+      {:ok, show_live, _html} = live(conn, "/games/#{game_id}/players/#{player.id}")
+      render_click(show_live, "next_round", %{})
+
+      # Immediately after click: round_open should be false (update applied).
+      # rounds_played is still 0 — the 100ms timer has not fired yet.
+      {:ok, game_after_click} = Cornucopia.Game.find(game_id)
+      assert game_after_click.round_open == false
+      assert game_after_click.rounds_played == 0
+
+      # Wait for the :proceed_to_next_round timer (100ms) to fire and be processed.
+      :timer.sleep(300)
+      # Flush the LiveView's message queue so handle_info(:proceed_to_next_round) runs.
+      render(show_live)
+
+      {:ok, game_after_timer} = Cornucopia.Game.find(game_id)
+      assert game_after_timer.rounds_played == 1
+      assert game_after_timer.round_open == true
     end
   end
 
