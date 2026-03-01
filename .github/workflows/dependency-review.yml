@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: 'Dependency Review'
         uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
+        continue-on-error: true  # Dependency Graph may not be enabled on forks
         with:
           # Ignore GHSA-vg6x-rcgg-rjx6 as the dev server is not used for static projects other than for debugging locally
           allow-ghsas: GHSA-vg6x-rcgg-rjx6,

@@ -42,21 +42,22 @@ defmodule CopiWeb.PlayerLive.Show do
     game = socket.assigns.game
 
     if round_open?(game) do
-      # Somehow we've had a request to advance to the next round with players still to play, possibly a race condition, ignore
-
+      # Round is still open — players have not all played yet.
+      # Possibly a race condition; ignore and do nothing.
+      {:noreply, socket}
     else
+      # Round is already closed: advance rounds_played and broadcast the
+      # updated state to all connected clients.
       Copi.Cornucopia.update_game(game, %{rounds_played: game.rounds_played + 1})
 
       if last_round?(game) do
-        Copi.Cornucopia.update_game(game, %{finished_at: DateTime.truncate(DateTime.utc_now(), :second)} )
+        Copi.Cornucopia.update_game(game, %{finished_at: DateTime.truncate(DateTime.utc_now(), :second)})
       end
+
+      {:ok, updated_game} = Game.find(game.id)
+      CopiWeb.Endpoint.broadcast(topic(updated_game.id), "game:updated", updated_game)
+      {:noreply, assign(socket, :game, updated_game)}
     end
-
-    {:ok, updated_game} = Game.find(game.id)
-
-    CopiWeb.Endpoint.broadcast(topic(updated_game.id), "game:updated", updated_game)
-
-    {:noreply, assign(socket, :game, updated_game)}
   end
 
   @impl true
